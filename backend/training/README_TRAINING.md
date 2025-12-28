@@ -8,7 +8,7 @@
 
 ```bash
 cd saved/CTF/backend
-./monitor_training.sh 8082
+./training/monitor_training.sh 8082
 ```
 
 这会：
@@ -20,12 +20,14 @@ cd saved/CTF/backend
 
 **终端1 - 启动训练：**
 ```bash
-python3 train_self_play.py 8082
+cd saved/CTF/backend
+python3 training/train_self_play.py 8082
 ```
 
 **终端2 - 启动可视化：**
 ```bash
-python3 visualize_training.py models/training_stats.json 5
+cd saved/CTF/backend
+python3 training/visualize_training.py lib/models/training_stats.json 5
 ```
 
 ## 可视化内容
@@ -121,8 +123,8 @@ python3 visualize_training.py models/training_stats.json 5
 
 ## 文件说明
 
-- `models/training_stats.json` - 训练统计数据（JSON格式）
-- `models/training_plot.png` - 训练图表（自动保存）
+- `lib/models/training_stats.json` - 训练统计数据（JSON格式）
+- `lib/models/training_plot.png` - 训练图表（自动保存）
 - `models/dqn_model_latest.pth` - 最新模型
 - `models/dqn_model_ep{N}.pth` - 每10个episode的检查点
 

@@ -147,7 +147,7 @@ ls -lh models/dqn_model_latest.pth
 ```
 3. 如果不存在，需要先训练模型：
 ```bash
-python3 train_direct.py
+python3 training/train_direct.py
 ```
 
 ### 前端无法连接

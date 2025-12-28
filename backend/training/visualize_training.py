@@ -3,8 +3,15 @@
 实时显示训练进度和统计信息，并提供终止建议
 """
 
-import json
+import sys
 import os
+# 添加父目录到路径，以便访问 lib/
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(SCRIPT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
+
+import json
 import time
 import matplotlib.pyplot as plt
 from collections import deque
@@ -18,7 +25,10 @@ plt.rcParams['axes.unicode_minus'] = False
 class TrainingVisualizer:
     """训练可视化器"""
     
-    def __init__(self, stats_file="lib/models/training_stats.json", update_interval=5):
+    def __init__(self, stats_file=None, update_interval=5):
+        # 如果没有指定stats_file，使用默认路径（相对于backend目录）
+        if stats_file is None:
+            stats_file = os.path.join(PARENT_DIR, "lib/models/training_stats.json")
         self.stats_file = stats_file
         self.update_interval = update_interval
         self.stats_history = {

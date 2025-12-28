@@ -183,61 +183,19 @@ async def run_game_server(port, start_fn, plan_fn, end_fn):
     lock = threading.Lock()
     async def handler(websocket):
         print(f"Connected on port {port}")
-        try:
-            async for msg in websocket:
-                try:
-                    req = json.loads(msg)
-                    action = req.get("action")
-                    if action == "init":
-                        with lock:
-                            start_fn(req)
-                    elif action == "status":
-                   # 添加超时保护，防止 plan_fn 执行时间过长导致阻塞
-                        try:
-                            import asyncio
-                            with lock:
-                                # 在线程池中执行 plan_fn，并设置超时（3秒）
-                                loop = asyncio.get_event_loop()
-                                moves = await asyncio.wait_for(
-                                    loop.run_in_executor(None, plan_fn, req),
-                                    timeout=3.0
-                                )
-                                if moves is None:
-                                    moves = {}
-                            await websocket.send(json.dumps({"players": moves}))
-                        except asyncio.TimeoutError:
-                            print(f"⚠️  警告：plan_next_actions 执行超时（>3秒），返回空动作")
-                            # 返回空动作，避免游戏卡死
-                            try:
-                                await websocket.send(json.dumps({"players": {}}))
-                            except:
-                                pass
-                        except Exception as e:
-                            print(f"⚠️  警告：plan_next_actions 执行出错: {e}")
-                            import traceback
-                            traceback.print_exc()
-                            # 返回空动作，避免游戏卡死
-                            try:
-                                await websocket.send(json.dumps({"players": {}}))
-                            except:
-                                pass
-                    elif action == "finished":
-                        with lock:
-                            end_fn(req)
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error: {e}")
-                except Exception as e:
-                    print(f"Error processing message: {e}")
-                    import traceback
-                    traceback.print_exc()
-        except websockets.exceptions.ConnectionClosedOK:
-            print("Client closed connection normally")
-        except websockets.exceptions.ConnectionClosedError as e:
-            print(f"Connection error: {e}")
-        except Exception as e:
-            print(f"Handler error: {e}")
-            import traceback
-            traceback.print_exc()
+        async for msg in websocket:
+            req = json.loads(msg)
+            action = req.get("action")
+            if action == "init":
+                with lock:
+                    start_fn(req)
+            elif action == "status":
+                with lock:
+                    moves = plan_fn(req)
+                    await websocket.send(json.dumps({"players": moves}))
+            elif action == "finished":
+                with lock:
+                    end_fn(req)
 
     print(f"Starting server on port {port}...")
     async with websockets.serve(handler, "0.0.0.0", port):

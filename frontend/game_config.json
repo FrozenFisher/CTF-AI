@@ -4,9 +4,11 @@
     { "name": "R", "who": "user48-2"}
   ],
   "setup": {
-    "numPlayers": 3,
-    "numFlags": 9,
-    "useRandomFlags": true
+    "numPlayers": 9,
+    "numFlags": 20,
+    "useRandomFlags": true,
+    "mapWidth": 20,
+    "mapHeight": 20
   },
   "servers": {
     "user0-1": "ws://0.0.0.0:34568",

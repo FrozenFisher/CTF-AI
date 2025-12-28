@@ -30,10 +30,15 @@ check_port() {
 check_port $PORT1
 check_port $PORT2
 
+# 切换到backend目录（脚本的父目录）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$BACKEND_DIR"
+
 # 启动L队 - RL训练agent（使用train_self_play.py）
 echo ""
 echo "[1/2] 启动L队 - RL训练Agent (端口 $PORT1)..."
-python3 train_self_play.py $PORT1 > training_l.log 2>&1 &
+python3 training/train_self_play.py $PORT1 > training_l.log 2>&1 &
 TRAIN_PID=$!
 echo "  PID: $TRAIN_PID"
 echo "  日志: training_l.log"

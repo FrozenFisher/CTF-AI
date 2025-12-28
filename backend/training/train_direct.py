@@ -3,11 +3,18 @@
 直接模拟游戏环境进行训练，速度更快
 """
 
+import sys
+import os
+# 添加父目录到路径，以便访问 lib/ 和 pathfinding_adapter.py
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(SCRIPT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
+
 from lib import RL
 import numpy as np
 import random
 import math
-import os
 import json
 import time
 import torch

@@ -6,7 +6,7 @@
 
 ```bash
 cd saved/CTF/backend
-./start_self_play_training.sh
+./training/start_self_play_training.sh
 ```
 
 ## 配置说明
@@ -25,7 +25,7 @@ cd saved/CTF/backend
 
 ### 当前配置
 
-- **L队**: 使用RL训练agent（`train_self_play.py`）
+- **L队**: 使用RL训练agent（`training/train_self_play.py`）
   - 收集经验并训练模型
   - 每10个episode保存模型
   - 显示训练统计
@@ -36,7 +36,7 @@ cd saved/CTF/backend
 
 ### 修改对手类型
 
-如果想使用另一个RL agent作为对手，修改 `train_self_play.py`：
+如果想使用另一个RL agent作为对手，修改 `training/train_self_play.py`：
 
 ```python
 USE_OPPONENT_RL = True  # 改为True
@@ -97,7 +97,7 @@ http://localhost:8000/index.html
 启动可视化监控（另一个终端）：
 
 ```bash
-python3 visualize_training.py models/training_stats.json 5
+python3 training/visualize_training.py lib/models/training_stats.json 5
 ```
 
 ## 注意事项

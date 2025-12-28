@@ -1114,51 +1114,69 @@ def plan_next_actions(req):
     score_diff = my_score - enemy_score
     
     # 根据敌方在prison中的数量和得分差分配任务
-    # 获取当前队伍名称（从world.my_team_name或从玩家列表中获取）
-    my_team_name = world.my_team_name
-    if not my_team_name and my_players_go:
-        my_team_name = my_players_go[0].get("team", "")
+    # 动态获取所有自由玩家（无旗且不在prison）
+    available_players = my_players_go
+    total_players = len(available_players)
     
-    # 根据队伍名称生成玩家名称前缀
-    player_prefix = my_team_name  # "L" 或 "R"
+    if total_players == 0:
+        print(f"  ⚠️  无可用自由玩家")
+        player_assignments = {}
+    else:
     player_assignments = {}  # {player_name: "defence" or "scoring"}
     
+        # 计算defence和scoring的数量（基于百分比比例）
     # 策略1：如果我们的旗帜数量 < 对面的旗帜数量（落后），采用更激进的进攻策略
     if score_diff < 0:
         print(f"  📊 得分: {my_score} vs {enemy_score} (落后)，采用激进进攻策略")
         if enemy_prison_count <= 1:
-            # 激进进攻：1个defence，2个scoring
-            player_assignments = {f"{player_prefix}0": "defence", f"{player_prefix}1": "scoring", f"{player_prefix}2": "scoring"}
+                # 激进进攻：1/3 defence，2/3 scoring
+                defence_count = max(1, int(total_players * 1 / 3))
+                scoring_count = total_players - defence_count
         elif enemy_prison_count == 2:
-            # 激进进攻：全部scoring
-            player_assignments = {f"{player_prefix}0": "scoring", f"{player_prefix}1": "scoring", f"{player_prefix}2": "scoring"}
+                # 激进进攻：全部scoring (0% defence, 100% scoring)
+                defence_count = 0
+                scoring_count = total_players
         else:  # enemy_prison_count >= 3
-            # 激进进攻：全部scoring
-            player_assignments = {f"{player_prefix}0": "scoring", f"{player_prefix}1": "scoring", f"{player_prefix}2": "scoring"}
+                # 激进进攻：全部scoring (0% defence, 100% scoring)
+                defence_count = 0
+                scoring_count = total_players
     
     # 策略2：如果我们的旗帜数量 = 对面的旗帜数量（平局），采用原策略
     elif score_diff == 0:
         print(f"  📊 得分: {my_score} vs {enemy_score} (平局)，采用原策略")
         if enemy_prison_count <= 1:
-            # 当敌方in prison <= 1时：0和1都defence，2是scoring
-            player_assignments = {f"{player_prefix}0": "defence", f"{player_prefix}1": "defence", f"{player_prefix}2": "scoring"}
+                # 当敌方in prison <= 1时：2/3 defence，1/3 scoring
+                defence_count = max(1, int(total_players * 2 / 3))
+                scoring_count = total_players - defence_count
         elif enemy_prison_count == 2:
-            # 当敌方in prison == 2时：0是defence，1和2是scoring
-            player_assignments = {f"{player_prefix}0": "defence", f"{player_prefix}1": "scoring", f"{player_prefix}2": "scoring"}
+                # 当敌方in prison == 2时：1/3 defence，2/3 scoring
+                defence_count = max(1, int(total_players * 1 / 3))
+                scoring_count = total_players - defence_count
         else:  # enemy_prison_count >= 3
-            # 当敌方in prison >= 3时：0、1、2都是scoring
-            player_assignments = {f"{player_prefix}0": "scoring", f"{player_prefix}1": "scoring", f"{player_prefix}2": "scoring"}
+                # 当敌方in prison >= 3时：全部scoring (0% defence, 100% scoring)
+                defence_count = 0
+                scoring_count = total_players
     
     # 策略3：如果我们的旗帜数量 > 对面的旗帜数量（领先），采用完全防守策略
     else:  # score_diff > 0
         print(f"  📊 得分: {my_score} vs {enemy_score} (领先)，采用完全防守策略")
-        # 完全防守：全部defence
         if enemy_prison_count <= 2:
-            # 当敌方in prison <= 2时：0、1、2都defence
-            player_assignments = {f"{player_prefix}0": "defence", f"{player_prefix}1": "defence", f"{player_prefix}2": "defence"}
+                # 当敌方in prison <= 2时：全部defence (100% defence, 0% scoring)
+                defence_count = total_players
+                scoring_count = 0
         else:  # enemy_prison_count >= 3
-            # 当敌方in prison >= 3时：0、1、2都是scoring
-            player_assignments = {f"{player_prefix}0": "scoring", f"{player_prefix}1": "scoring", f"{player_prefix}2": "scoring"}
+                # 当敌方in prison >= 3时：全部scoring (0% defence, 100% scoring)
+                defence_count = 0
+                scoring_count = total_players
+        
+        # 分配任务给玩家
+        print(f"  📋 玩家总数: {total_players}, defence: {defence_count}, scoring: {scoring_count}")
+        for i, player in enumerate(available_players):
+            player_name = player["name"]
+            if i < defence_count:
+                player_assignments[player_name] = "defence"
+            else:
+                player_assignments[player_name] = "scoring"
     
     # 处理没有flag的玩家，根据分配执行任务
     # 记录已分配的敌人和flag，避免重复（参考pick_test.py）

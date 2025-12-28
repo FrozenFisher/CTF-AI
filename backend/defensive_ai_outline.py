@@ -4,17 +4,11 @@ CTF Game AI - Defensive Strategy with State Machine
 
 === 策略概览 ===
 
-0. 特判规则：
-   - 检测敌方领土靠近中线的列是否同时存在障碍物和旗帜
-   - 如果是，派一名玩家优先抢夺该旗帜
-   - 该玩家先移动到己方第二列与旗帜同行，再越线夺旗
-
 1. 状态机驱动：
    - ABSOLUTE_DEFENSE：绝对防守，在己方中线附近盯人
    - OPPORTUNITY_ATTACK：找机会进攻，安全夺旗
    - DISTRACTION：拉扯对手，将其引向边缘
    - RESCUE：救援被关队友
-   - SPECIAL_FLAG_GRAB：特殊旗帜抢夺
 
 2. 游戏阶段判断：
    - LEADING：领先 -> 绝对防守
@@ -24,6 +18,7 @@ CTF Game AI - Defensive Strategy with State Machine
 
 3. 防守策略：
    - 在己方领土最靠近中线的列防守
+   - 特判：领先时防守线往后退3格，避免贴着中线被抓
    - 每人盯一个对手，始终保持同一行
    - 对方至少两人进监狱前不越过中线
 
@@ -33,8 +28,10 @@ CTF Game AI - Defensive Strategy with State Machine
    - 确保不重复分配旗帜
 
 5. 路径规划优化：
-   - 在敌方领土时，将敌人的十字形区域（上下左右）视为障碍
-   - 带旗回家时，避障范围扩大到十字形+对角线
+   - 仅在敌方领土时，将敌人的十字形区域（上下左右）视为障碍
+   - 在己方领地时不用加载敌人的十字形区域，因为不会被抓
+   - 带旗回家时，避障范围扩大到十字形+对角线（仅在敌方领土）
+   - 防守和拉扯时，强制检查目标位置，绝对不跨越中线
    - 利用 world.route_to(extra_obstacles=...) 实现智能避障
 
 6. 实时监控：
@@ -160,6 +157,7 @@ def assign_absolute_defense(situation: Dict):
     """
     绝对防守模式：每个己方玩家盯一个对手
     在己方领地最靠近中线的那一列，始终和跟踪目标保持同一行
+    特判：领先时防守线往后退2-3格，避免贴着中线被抓
     关键：对方两人进监狱前我方绝对不越过中线
     """
     global player_tracking_opponents, player_states, player_targets
@@ -172,12 +170,27 @@ def assign_absolute_defense(situation: Dict):
     map_width = world.width
     middle_x = map_width // 2
 
+    # 基础防守线（贴近中线）
     if my_side_is_left:
-        defense_x = middle_x - 1  # 左侧领地靠近中线的列
+        base_defense_x = middle_x - 1  # 左侧领地靠近中线的列
     else:
-        defense_x = middle_x  # 右侧领地靠近中线的列
+        base_defense_x = middle_x  # 右侧领地靠近中线的列
 
-    print(f"  Defense line: x={defense_x}")
+    # 特判：领先时往后退，增加安全边际
+    defense_offset = 0
+    if my_score > enemy_score:
+        defense_offset = 3  # 领先时后退3格
+        print(f"  [LEADING] Defense retreating by {defense_offset} columns")
+
+    if my_side_is_left:
+        defense_x = base_defense_x - defense_offset  # 左侧往左退
+    else:
+        defense_x = base_defense_x + defense_offset  # 右侧往右退
+
+    # 确保防守线在有效范围内
+    defense_x = max(0, min(map_width - 1, defense_x))
+
+    print(f"  Defense line: x={defense_x} (base={base_defense_x}, offset={defense_offset})")
 
     # 如果没有对手在场，防守中线中心位置
     if not opponents:
@@ -293,20 +306,24 @@ def assign_distraction_and_opportunity(situation: Dict):
             distraction_players.append(player_name)
             used_opponents.add(opp["name"])
 
-            # 拉扯策略：将对手往地图边缘带
+            # 拉扯策略：将对手往地图边缘带，但不越过中线
             player = next(p for p in my_players if p["name"] == player_name)
 
             # 根据对手的Y坐标决定往哪个边缘拉
             target_y = 0 if opp["posY"] < world.height // 2 else world.height - 1
 
-            # 在己方领地靠近中线的位置拉扯
+            # 在己方领地靠近中线的位置拉扯（始终在己方领地，不越线）
             map_width = world.width
             middle_x = map_width // 2
-            defense_x = middle_x - 1 if my_side_is_left else middle_x
+
+            if my_side_is_left:
+                defense_x = middle_x - 1  # 左侧，贴近中线但不越过
+            else:
+                defense_x = middle_x  # 右侧，贴近中线但不越过
 
             player_targets[player_name] = (defense_x, target_y)
             player_states[player_name] = PlayerState.DISTRACTION
-            print(f"  {player_name}: DISTRACTION, pulling {opp['name']} to edge Y={target_y}")
+            print(f"  {player_name}: DISTRACTION, pulling {opp['name']} to edge Y={target_y} at x={defense_x}")
 
     # 其余玩家寻找机会夺旗
     attack_players = [p for p in my_players if p["name"] not in distraction_players]
@@ -424,12 +441,30 @@ def assign_safe_flags(attack_players: List[Dict], enemy_flags: List[Dict],
 
 
 def assign_defense_position(player: Dict, opponents: List[Dict]):
-    """为单个玩家分配防守位置"""
+    """为单个玩家分配防守位置（考虑领先时的后退逻辑）"""
     global player_states, player_targets
 
     map_width = world.width
     middle_x = map_width // 2
-    defense_x = middle_x - 1 if my_side_is_left else middle_x
+
+    # 基础防守线
+    if my_side_is_left:
+        base_defense_x = middle_x - 1
+    else:
+        base_defense_x = middle_x
+
+    # 特判：领先时往后退
+    defense_offset = 0
+    if my_score > enemy_score:
+        defense_offset = 3
+
+    if my_side_is_left:
+        defense_x = base_defense_x - defense_offset
+    else:
+        defense_x = base_defense_x + defense_offset
+
+    # 确保在有效范围内
+    defense_x = max(0, min(map_width - 1, defense_x))
 
     if opponents:
         nearest_opp = min(
@@ -583,9 +618,10 @@ def generate_moves(situation: Dict) -> Dict[str, str]:
     """
     根据玩家状态和目标生成移动指令
     核心优化：
-    1. 在敌方领土时，将敌人的十字形位置视为障碍
-    2. 特殊处理SPECIAL_FLAG_GRAB状态的移动逻辑
-    3. 带旗回家时优先避开敌人
+    1. 仅在敌方领土时，将敌人的十字形位置视为障碍
+    2. 在己方领地时不用加载敌人的十字形区域，因为不会被抓
+    3. 带旗回家时优先避开敌人（仅在敌方领土）
+    4. 防守和拉扯状态时，强制检查不跨越中线
     """
     player_moves = {}
     my_players = situation["my_players"]
@@ -599,16 +635,18 @@ def generate_moves(situation: Dict) -> Dict[str, str]:
         player_name = player["name"]
         curr_pos = (player["posX"], player["posY"])
 
+        # 判断当前位置是否在己方领地
+        is_in_home_territory = world.is_on_left(curr_pos) == my_side_is_left
+
         # 优先处理：如果玩家有旗帜，直接回家
         if player["hasFlag"]:
             dest = my_targets[0]
 
-            # 带旗时，在敌方领土需要更加谨慎避开敌人
-            is_safe = world.is_on_left(curr_pos) == my_side_is_left
+            # 带旗时，仅在敌方领土需要避开敌人
             extra_obstacles = []
 
-            if not is_safe:
-                # 在敌方领土，避开敌人的更大范围
+            if not is_in_home_territory:
+                # 在敌方领土，避开敌人的更大范围（十字形+对角线）
                 for opp in opponents:
                     opp_x, opp_y = opp["posX"], opp["posY"]
                     # 十字形加对角线：更安全的避障范围
@@ -619,13 +657,15 @@ def generate_moves(situation: Dict) -> Dict[str, str]:
                         (opp_x - 1, opp_y - 1), (opp_x + 1, opp_y - 1),  # 对角
                         (opp_x - 1, opp_y + 1), (opp_x + 1, opp_y + 1)
                     ])
+            # 在己方领地时，extra_obstacles 保持为空列表，不避开敌人
 
             path = world.route_to(curr_pos, dest, extra_obstacles=extra_obstacles)
 
             if path and len(path) > 1:
                 move = world.get_direction(curr_pos, path[1])
                 player_moves[player_name] = move
-                print(f"{player_name}: RETURNING_FLAG -> {dest} (move: {move})")
+                territory_info = "HOME" if is_in_home_territory else "ENEMY"
+                print(f"{player_name}: RETURNING_FLAG [{territory_info}] -> {dest} (move: {move})")
             continue
 
         # 根据状态决定目标
@@ -635,12 +675,29 @@ def generate_moves(situation: Dict) -> Dict[str, str]:
         state = player_states[player_name]
         dest = player_targets[player_name]
 
-        # 计算路径，考虑障碍
-        is_safe = world.is_on_left(curr_pos) == my_side_is_left
+        # 关键安全检查：防守和拉扯时，绝对不跨过中线
+        dest_in_home_territory = world.is_on_left(dest) == my_side_is_left
 
-        # 在敌方领土时，将敌人的十字形位置视为障碍
+        if state in [PlayerState.ABSOLUTE_DEFENSE, PlayerState.DISTRACTION]:
+            # 如果目标在敌方领地，强制调整到中线边缘
+            if not dest_in_home_territory:
+                map_width = world.width
+                middle_x = map_width // 2
+
+                if my_side_is_left:
+                    # 左侧，最右边的列是 middle_x - 1
+                    dest = (middle_x - 1, dest[1])
+                else:
+                    # 右侧，最左边的列是 middle_x
+                    dest = (middle_x, dest[1])
+
+                print(f"  WARNING: {player_name} target adjusted to stay in home territory: {dest}")
+
+        # 仅在敌方领土时，将敌人的十字形位置视为障碍
         extra_obstacles = []
-        if not is_safe:
+
+        if not is_in_home_territory:
+            # 在敌方领土，避开敌人的十字形区域
             for opp in opponents:
                 opp_x, opp_y = opp["posX"], opp["posY"]
                 # 十字形：中心+上下左右
@@ -651,41 +708,17 @@ def generate_moves(situation: Dict) -> Dict[str, str]:
                     (opp_x, opp_y - 1),
                     (opp_x, opp_y + 1)
                 ])
+        # 在己方领地时，extra_obstacles 保持为空列表，不需要避开敌人
 
-        # 特殊处理：SPECIAL_FLAG_GRAB状态
-        # 先移动到己方领地靠近中线的第二列，与旗帜同一行
-        # 然后再尝试获取旗帜
-        if state == PlayerState.SPECIAL_FLAG_GRAB:
-            map_width = world.width
-            middle_x = map_width // 2
-
-            if my_side_is_left:
-                second_column = middle_x - 2  # 左侧第二列
-            else:
-                second_column = middle_x + 1  # 右侧第二列
-
-            # 检查是否已经到达第二列且与旗帜同一行
-            at_second_column = (curr_pos[0] == second_column)
-            same_row_as_flag = (curr_pos[1] == dest[1])
-
-            if not (at_second_column and same_row_as_flag):
-                # 还没到达攻击位置，先移动到第二列与旗帜同一行
-                intermediate_dest = (second_column, dest[1])
-                path = world.route_to(curr_pos, intermediate_dest)
-                print(f"{player_name}: SPECIAL_FLAG_GRAB, moving to attack position {intermediate_dest}")
-            else:
-                # 已经到达攻击位置，现在去夺旗
-                path = world.route_to(curr_pos, dest, extra_obstacles=extra_obstacles)
-                print(f"{player_name}: SPECIAL_FLAG_GRAB, grabbing flag at {dest}")
-        else:
-            # 普通路径规划
-            path = world.route_to(curr_pos, dest, extra_obstacles=extra_obstacles)
+        # 路径规划
+        path = world.route_to(curr_pos, dest, extra_obstacles=extra_obstacles)
 
         # 生成移动指令
         if path and len(path) > 1:
             move = world.get_direction(curr_pos, path[1])
             player_moves[player_name] = move
-            print(f"{player_name}: {state.value} -> {dest} (move: {move})")
+            territory_info = "HOME" if is_in_home_territory else "ENEMY"
+            print(f"{player_name}: {state.value} [{territory_info}] -> {dest} (move: {move})")
 
     return player_moves
 

@@ -13,12 +13,17 @@ echo "训练Agent端口: $PORT1"
 echo "对手Agent端口: $PORT2"
 echo "=========================================="
 
+# 切换到backend目录（脚本的父目录）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$BACKEND_DIR"
+
 # 创建models目录
 mkdir -p models
 
 # 启动训练agent（使用train_self_play.py）
 echo "启动训练Agent (端口 $PORT1)..."
-python3 train_self_play.py $PORT1 &
+python3 training/train_self_play.py $PORT1 &
 TRAIN_PID=$!
 
 # 等待一下确保第一个服务器启动

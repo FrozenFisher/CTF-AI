@@ -4,7 +4,11 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
+# 添加父目录到路径，以便访问 lib/
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(SCRIPT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
 
 print("=" * 60)
 print("训练系统测试")

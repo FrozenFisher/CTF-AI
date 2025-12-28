@@ -3,13 +3,20 @@
 让RL agent与规则策略（或另一个RL agent）自动对战进行训练
 """
 
+import sys
+import os
+# 添加父目录到路径，以便访问 lib/ 和 server.py
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(SCRIPT_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
+
 import importlib
 import lib.game_engine
 importlib.reload(lib.game_engine)
 
 from lib.game_engine import GameMap, run_game_server
 from lib import RL
-import os
 import json
 import asyncio
 import random
@@ -18,7 +25,6 @@ from collections import deque
 import subprocess
 import time
 import signal
-import sys
 
 # 初始化world
 world = GameMap()

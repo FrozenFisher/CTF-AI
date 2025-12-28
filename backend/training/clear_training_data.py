@@ -8,9 +8,15 @@
 - 训练日志文件（.log）
 """
 
+import sys
 import os
 import shutil
 import glob
+
+# 切换到backend目录（脚本的父目录）
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(SCRIPT_DIR)
+os.chdir(PARENT_DIR)
 
 def clear_training_data():
     """清除所有训练记录"""
@@ -18,9 +24,9 @@ def clear_training_data():
     print("清除训练记录")
     print("=" * 60)
     
-    base_dir = "."
-    models_dir = "lib/models"
-    opponent_pool_dir = "lib/models/opponent_pool"
+    base_dir = PARENT_DIR
+    models_dir = os.path.join(PARENT_DIR, "lib/models")
+    opponent_pool_dir = os.path.join(PARENT_DIR, "lib/models/opponent_pool")
     
     deleted_count = 0
     
