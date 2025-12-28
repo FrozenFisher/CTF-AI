@@ -8,7 +8,7 @@ import lib.game_engine
 importlib.reload(lib.game_engine)
 
 from lib.game_engine import GameMap, run_game_server
-import RL
+from lib import RL
 import os
 import json
 import asyncio
@@ -73,7 +73,7 @@ def start_game_train(req):
         training_agent = RL.DQNAgent(state_dim, action_dim, device='cpu')
         
         # 加载已有模型（如果存在）
-        model_path = "./models/dqn_model_latest.pth"
+        model_path = "./lib/models/dqn_model_latest.pth"
         if os.path.exists(model_path):
             training_agent.load_model(model_path)
             print(f"[Self-Play] Loaded training agent from {model_path}")
@@ -445,7 +445,7 @@ async def main():
     if port2:
         print(f"[Self-Play] Opponent agent on port {port2}")
     print(f"[Self-Play] Opponent type: {'RL Agent' if USE_OPPONENT_RL else 'Rule-based'}")
-    print(f"[Self-Play] Model will be saved to ./models/ directory")
+    print(f"[Self-Play] Model will be saved to ./lib/models/ directory")
     print(f"[Self-Play] Training will run until interrupted (Ctrl+C)")
     
     try:

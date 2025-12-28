@@ -18,7 +18,7 @@ plt.rcParams['axes.unicode_minus'] = False
 class TrainingVisualizer:
     """训练可视化器"""
     
-    def __init__(self, stats_file="models/training_stats.json", update_interval=5):
+    def __init__(self, stats_file="lib/models/training_stats.json", update_interval=5):
         self.stats_file = stats_file
         self.update_interval = update_interval
         self.stats_history = {
@@ -283,7 +283,7 @@ class TrainingVisualizer:
                     fig = self.plot_stats(stats)
                     if fig:
                         if save_plot:
-                            plot_path = "models/training_plot.png"
+                            plot_path = "lib/models/training_plot.png"
                             fig.savefig(plot_path, dpi=150, bbox_inches='tight')
                             print(f"图表已保存: {plot_path}")
                         
@@ -301,7 +301,7 @@ def main():
     """主函数"""
     import sys
     
-    stats_file = sys.argv[1] if len(sys.argv) > 1 else "models/training_stats.json"
+    stats_file = sys.argv[1] if len(sys.argv) > 1 else "lib/models/training_stats.json"
     update_interval = int(sys.argv[2]) if len(sys.argv) > 2 else 5
     
     visualizer = TrainingVisualizer(stats_file, update_interval)

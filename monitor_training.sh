@@ -30,7 +30,7 @@ echo "启动可视化监控..."
 echo "按 Ctrl+C 停止监控和训练"
 echo "=========================================="
 
-python3 visualize_training.py models/training_stats.json 5
+python3 visualize_training.py lib/models/training_stats.json 5
 
 # 停止训练进程
 echo ""

@@ -13,7 +13,7 @@ print("=" * 60)
 # 测试1: 导入模块
 print("\n[测试1] 检查模块导入...")
 try:
-    import RL
+    from lib import RL
     print("✓ RL模块导入成功")
 except Exception as e:
     print(f"✗ RL模块导入失败: {e}")
@@ -99,7 +99,7 @@ except Exception as e:
 print("\n[测试6] 检查模型保存...")
 try:
     os.makedirs("models", exist_ok=True)
-    test_model_path = "models/test_model.pth"
+    test_model_path = "lib/models/test_model.pth"
     agent.save_model(test_model_path)
     
     if os.path.exists(test_model_path):

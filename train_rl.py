@@ -8,7 +8,7 @@ import lib.game_engine
 importlib.reload(lib.game_engine)
 
 from lib.game_engine import GameMap, run_game_server
-import RL
+from lib import RL
 import os
 import json
 import asyncio
@@ -286,7 +286,7 @@ async def main():
     
     port = int(sys.argv[1])
     print(f"[Training] Starting training server on port {port}...")
-    print(f"[Training] Model will be saved to ./models/ directory")
+    print(f"[Training] Model will be saved to ./lib/models/ directory")
     print(f"[Training] Training will run until interrupted (Ctrl+C)")
     
     try:

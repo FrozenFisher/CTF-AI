@@ -15,7 +15,7 @@ import threading
 # 配置
 PORT_RL = 34712  # RL模型服务器端口（L队）
 PORT_RULE = 34713  # 规则策略服务器端口（R队）
-MODEL_PATH = "./models/dqn_model_latest.pth"  # RL模型路径
+MODEL_PATH = "./lib/models/dqn_model_latest.pth"  # RL模型路径
 
 def check_port(port):
     """检查端口是否被占用"""

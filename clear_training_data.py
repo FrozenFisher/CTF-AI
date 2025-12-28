@@ -19,8 +19,8 @@ def clear_training_data():
     print("=" * 60)
     
     base_dir = "."
-    models_dir = "models"
-    opponent_pool_dir = "models/opponent_pool"
+    models_dir = "lib/models"
+    opponent_pool_dir = "lib/models/opponent_pool"
     
     deleted_count = 0
     

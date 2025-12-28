@@ -3,7 +3,7 @@
 直接模拟游戏环境进行训练，速度更快
 """
 
-import RL
+from lib import RL
 import numpy as np
 import random
 import math
@@ -462,6 +462,30 @@ class SimpleWorldWrapper:
             first_pos = next(iter(pos))
             return self.simulator.is_on_left(first_pos)
         return pos[0] < self.middle_line if isinstance(pos, (tuple, list)) else False
+    
+    def route_to(self, srcXY, dstXY, extra_obstacles=None):
+        """
+        BFS路径搜索（与game_engine.GameMap.route_to相同）
+        """
+        import collections
+        extras = set(extra_obstacles) if extra_obstacles else set()
+        queue = collections.deque([[srcXY]])
+        seen = {srcXY}
+        
+        while queue:
+            path = queue.popleft()
+            curr = path[-1]
+            if curr == dstXY:
+                return path
+
+            for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)]:  # Up, Down, Left, Right
+                nxt = (curr[0] + dx, curr[1] + dy)
+                if (0 <= nxt[0] < self.width and 0 <= nxt[1] < self.height and 
+                    nxt not in self.walls and nxt not in self.obstacles and 
+                    nxt not in extras and nxt not in seen):
+                    queue.append(path + [nxt])
+                    seen.add(nxt)
+        return []
 
 
 # 训练统计（全局变量，用于train_episode函数）
@@ -1045,7 +1069,7 @@ def main():
     print("✅ 策略多样性：L队epsilon_end=0.05, R队epsilon_end=0.15（更高探索）")
     
     # 初始化最佳模型（用于评估对比）
-    best_model_path = "models/dqn_model_final.pth"
+    best_model_path = "lib/models/dqn_model_final.pth"
     best_win_rate = 0.0  # 历史最佳胜率
     best_agent = RL.DQNAgent(state_dim, action_dim, device=device, use_double_dqn=True)
     if os.path.exists(best_model_path):
@@ -1058,7 +1082,7 @@ def main():
         print(f"🆕 初始化最佳模型（使用当前模型）")
     
     # 加载模型（根据配置决定是否加载）
-    model_path = "./models/dqn_model_latest.pth"
+    model_path = "./lib/models/dqn_model_latest.pth"
     if LOAD_EXISTING_MODEL and os.path.exists(model_path):
         l_agent.load_model(model_path)
         r_agent.load_model(model_path)
@@ -1080,7 +1104,7 @@ def main():
     
     # 对手池：存储历史模型路径（每500个episode保存一次）
     opponent_pool = []
-    opponent_pool_dir = "models/opponent_pool"
+    opponent_pool_dir = "lib/models/opponent_pool"
     os.makedirs(opponent_pool_dir, exist_ok=True)
     
     # 加载已有的对手池模型
@@ -1205,7 +1229,7 @@ def main():
                         current_r_strategy = 'current'
                 elif rand < strategy_diversity_config['use_opponent_pool_prob'] + strategy_diversity_config['use_high_exploration_prob']:
                     # 使用当前模型但提高探索率
-                    latest_path = "models/dqn_model_latest.pth"
+                    latest_path = "lib/models/dqn_model_latest.pth"
                     if os.path.exists(latest_path):
                         r_agent.load_model(latest_path)
                     r_agent.epsilon = max(r_agent.epsilon, 0.2)  # 强制高探索
@@ -1213,7 +1237,7 @@ def main():
                     print(f"  🎯 R队策略切换: 高探索模式 (epsilon={r_agent.epsilon:.3f})")
                 else:
                     # 使用当前模型，但保持不同epsilon
-                    latest_path = "models/dqn_model_latest.pth"
+                    latest_path = "lib/models/dqn_model_latest.pth"
                     if os.path.exists(latest_path):
                         r_agent.load_model(latest_path)
                     r_agent.epsilon = max(r_agent.epsilon, 0.1)  # 中等探索
@@ -1224,7 +1248,7 @@ def main():
             
             # 定期同步L队模型到worker（无论是否从0训练，都保存模型供后续使用）
             if episode % 10 == 0:
-                latest_path = "models/dqn_model_latest.pth"
+                latest_path = "lib/models/dqn_model_latest.pth"
                 l_agent.save_model(latest_path)
                 # 向所有worker发送模型更新（从0训练时，worker也会收到新训练的模型）
                 for _ in range(num_workers):
@@ -1296,12 +1320,12 @@ def main():
                     
                     # 保存最终模型
                     os.makedirs("models", exist_ok=True)
-                    final_path = f"models/dqn_model_final_ep{episode}.pth"
+                    final_path = f"lib/models/dqn_model_final_ep{episode}.pth"
                     l_agent.save_model(final_path)
-                    latest_path = "models/dqn_model_latest.pth"
+                    latest_path = "lib/models/dqn_model_latest.pth"
                     l_agent.save_model(latest_path)
                     
-                    stats_path = "models/training_stats.json"
+                    stats_path = "lib/models/training_stats.json"
                     with open(stats_path, 'w') as f:
                         json.dump(training_stats, f, indent=2)
                     
@@ -1334,12 +1358,12 @@ def main():
                     
                     # 保存最终模型
                     os.makedirs("models", exist_ok=True)
-                    final_path = "models/dqn_model_final_winrate80.pth"
+                    final_path = "lib/models/dqn_model_final_winrate80.pth"
                     l_agent.save_model(final_path)
-                    latest_path = "models/dqn_model_latest.pth"
+                    latest_path = "lib/models/dqn_model_latest.pth"
                     l_agent.save_model(latest_path)
                     
-                    stats_path = "models/training_stats.json"
+                    stats_path = "lib/models/training_stats.json"
                     with open(stats_path, 'w') as f:
                         json.dump(training_stats, f, indent=2)
                     
@@ -1358,9 +1382,9 @@ def main():
             # 保存模型（每1000个episode，长期训练）
             if episode % 1000 == 0 and episode > 0:
                 os.makedirs("models", exist_ok=True)
-                model_path = f"models/dqn_model_ep{episode}.pth"
+                model_path = f"lib/models/dqn_model_ep{episode}.pth"
                 l_agent.save_model(model_path)
-                latest_path = "models/dqn_model_latest.pth"
+                latest_path = "lib/models/dqn_model_latest.pth"
                 l_agent.save_model(latest_path)
                 # 从0训练时，R队不加载模型，只保持高探索率
                 # 从已有模型继续时，R队加载最新模型
@@ -1368,7 +1392,7 @@ def main():
                     r_agent.load_model(latest_path)
                 r_agent.epsilon = max(r_agent.epsilon, 0.15)  # 确保R队保持高探索
                 
-                stats_path = "models/training_stats.json"
+                stats_path = "lib/models/training_stats.json"
                 with open(stats_path, 'w') as f:
                     json.dump(training_stats, f, indent=2)
                 
@@ -1424,12 +1448,12 @@ def main():
         
         # 保存最终模型
         os.makedirs("models", exist_ok=True)
-        final_path = "models/dqn_model_final.pth"
+        final_path = "lib/models/dqn_model_final.pth"
         l_agent.save_model(final_path)
-        latest_path = "models/dqn_model_latest.pth"
+        latest_path = "lib/models/dqn_model_latest.pth"
         l_agent.save_model(latest_path)
         
-        stats_path = "models/training_stats.json"
+        stats_path = "lib/models/training_stats.json"
         with open(stats_path, 'w') as f:
             json.dump(training_stats, f, indent=2)
         

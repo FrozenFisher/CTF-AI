@@ -12,7 +12,7 @@ world = GameMap()
 
 # Import RL module
 try:
-    import RL
+    from lib import RL
     RL_AVAILABLE = True
 except ImportError:
     RL_AVAILABLE = False
@@ -181,10 +181,15 @@ def improved_route(srcXY, dstXY, extra_obstacles=None):
     if srcXY == dstXY:
         return [srcXY]
     
+    # 创建障碍物集合
+    obstacles_set = set()
+    if extra_obstacles:
+        obstacles_set.update(extra_obstacles)
+    
     # 计算敌人的势力范围（距离敌人一定范围内的区域都视为不可通过）
     enemy_influence_zone = set()
     opponents = world.list_players(mine=False, inPrison=False, hasFlag=None)
-    INFLUENCE_RADIUS = 2  # 敌人势力范围半径（曼哈顿距离）
+    INFLUENCE_RADIUS = 1  # 敌人势力范围半径（仅包括上下左右紧邻位置）
     
     for enemy in opponents:
         enemy_x = enemy["posX"]
@@ -233,22 +238,28 @@ def improved_route(srcXY, dstXY, extra_obstacles=None):
                 visited_zone.add((nx, ny))
                 queue.append((nx, ny, new_dist))
     
-    # 合并所有障碍物（包括额外障碍物和敌人势力范围）
-    all_obstacles = set()
-    if extra_obstacles:
-        all_obstacles.update(extra_obstacles)
-    all_obstacles.update(enemy_influence_zone)
+    # 将敌人势力范围加入额外障碍物
+    combined_obstacles = list(obstacles_set) + list(enemy_influence_zone)
     
     # 检查起点和终点是否在障碍物或敌人势力范围内
-    if srcXY in world.walls or srcXY in all_obstacles:
+    if srcXY in world.walls:
+        print(f"      [improved_route] 起点 {srcXY} 在障碍物中")
         return []
-    if dstXY in world.walls or dstXY in all_obstacles:
+    if srcXY in enemy_influence_zone:
+        print(f"      [improved_route] 起点 {srcXY} 在敌人势力范围内")
+        return []
+    if dstXY in world.walls:
+        print(f"      [improved_route] 终点 {dstXY} 在障碍物中")
+        return []
+    if dstXY in enemy_influence_zone:
+        print(f"      [improved_route] 终点 {dstXY} 在敌人势力范围内")
         return []
     
     # 调用游戏引擎的route_to进行路径搜索
-    # 将敌人势力范围作为extra_obstacles传递
-    obstacle_list = list(all_obstacles) if all_obstacles else None
-    return world.route_to(srcXY, dstXY, extra_obstacles=obstacle_list)
+    result_path = world.route_to(srcXY, dstXY, extra_obstacles=combined_obstacles if combined_obstacles else None)
+    if not result_path or len(result_path) <= 1:
+        print(f"      [improved_route] route_to 返回空路径或无效路径 (起点: {srcXY}, 终点: {dstXY}, 敌人势力范围大小: {len(enemy_influence_zone)})")
+    return result_path
 
 
 def build_defence_weight_map(extra_obstacles=None):
@@ -375,9 +386,9 @@ def build_defence_weight_map(extra_obstacles=None):
 
 def defence_route(srcXY, dstXY, extra_obstacles=None):
     """
-    计算防御专用的路径
-    防御策略：在自己半场内尽可能撞击敌人，让敌人进入prison
+    计算防御专用的路径，优先选择己方领地的路径
     内部调用游戏引擎的route_to进行路径搜索
+    防御策略：在自己半场内尽可能撞击敌人，让敌人进入prison
     - 避开障碍物
     - 尽量避免进入敌方领地（但允许通过）
     Args:
@@ -400,6 +411,11 @@ def defence_route(srcXY, dstXY, extra_obstacles=None):
     if srcXY == dstXY:
         return [srcXY]
     
+    # 创建障碍物集合
+    obstacles_set = set()
+    if extra_obstacles:
+        obstacles_set.update(extra_obstacles)
+    
     # 判断己方在哪一侧（用于判断敌方领地）
     my_targets = list(world.list_targets(mine=True))
     if my_targets:
@@ -413,45 +429,31 @@ def defence_route(srcXY, dstXY, extra_obstacles=None):
     if dstXY in world.walls:
         return []
     
-    # 优先尝试在己方领地内寻找路径
-    # 如果起点和终点都在己方领地，直接调用route_to
+    # 优先尝试只通过己方领地的路径
+    # 如果起点和终点都在己方领地，尝试限制路径只在己方领地
     src_is_left = world.is_on_left(srcXY)
     dst_is_left = world.is_on_left(dstXY)
     src_in_my_territory = (my_side_is_left and src_is_left) or (not my_side_is_left and not src_is_left)
     dst_in_my_territory = (my_side_is_left and dst_is_left) or (not my_side_is_left and not dst_is_left)
     
-    # 如果都在己方领地，直接调用route_to
+    # 如果起点和终点都在己方领地，尝试限制路径只在己方领地
     if src_in_my_territory and dst_in_my_territory:
-        return world.route_to(srcXY, dstXY, extra_obstacles=extra_obstacles)
+        # 将敌方领地的所有位置作为额外障碍物
+        enemy_territory_obstacles = list(obstacles_set)
+        for x in range(world.width):
+            for y in range(world.height):
+                is_left = world.is_on_left((x, y))
+                in_enemy_territory = (my_side_is_left and not is_left) or (not my_side_is_left and is_left)
+                if in_enemy_territory:
+                    enemy_territory_obstacles.append((x, y))
+        
+        # 尝试只在己方领地的路径
+        path = world.route_to(srcXY, dstXY, extra_obstacles=enemy_territory_obstacles if enemy_territory_obstacles else None)
+        if path:
+            return path
     
-    # 否则，尝试找到一条路径（可能经过敌方领地）
-    # 先尝试只使用己方领地的路径
-    # 如果找不到，再尝试允许通过敌方领地的路径
-    
-    # 方法1：尝试只通过己方领地的路径
-    # 计算敌方领地的所有位置作为临时障碍物
-    enemy_territory_obstacles = set()
-    for x in range(world.width):
-        for y in range(world.height):
-            is_left = world.is_on_left((x, y))
-            in_enemy_territory = (my_side_is_left and not is_left) or (not my_side_is_left and is_left)
-            if in_enemy_territory:
-                enemy_territory_obstacles.add((x, y))
-    
-    # 合并所有障碍物
-    all_obstacles = set()
-    if extra_obstacles:
-        all_obstacles.update(extra_obstacles)
-    all_obstacles.update(enemy_territory_obstacles)
-    
-    # 尝试只通过己方领地的路径
-    path = world.route_to(srcXY, dstXY, extra_obstacles=list(all_obstacles))
-    if path:
-        return path
-    
-    # 如果找不到只通过己方领地的路径，允许通过敌方领地
-    # 只使用原始障碍物
-    return world.route_to(srcXY, dstXY, extra_obstacles=extra_obstacles)
+    # 如果无法只在己方领地找到路径，或者起点/终点不在己方领地，使用普通路径
+    return world.route_to(srcXY, dstXY, extra_obstacles=list(obstacles_set) if obstacles_set else None)
 
 
 # ==================== 辅助函数 ====================
@@ -484,17 +486,25 @@ def find_closest_my_territory_on_path(path, player_pos):
         位置坐标 (x, y) 或 None
     """
     if not path:
+        print(f"      [find_closest_my_territory_on_path] 路径为空")
         return None
     
     closest_pos = None
     min_dist = float('inf')
+    my_territory_count = 0
     
     for pos in path:
         if is_in_my_territory(pos):
+            my_territory_count += 1
             dist = abs(pos[0] - player_pos[0]) + abs(pos[1] - player_pos[1])
             if dist < min_dist:
                 min_dist = dist
                 closest_pos = pos
+    
+    if closest_pos:
+        print(f"      [find_closest_my_territory_on_path] 路径长度: {len(path)}, 我方半场位置数: {my_territory_count}, 最近位置: {closest_pos}, 距离: {min_dist}")
+    else:
+        print(f"      [find_closest_my_territory_on_path] 路径长度: {len(path)}, 我方半场位置数: {my_territory_count}, 未找到我方半场位置")
     
     return closest_pos
 
@@ -508,6 +518,7 @@ def find_intersection_with_middle_line(path):
         位置坐标 (x, y) 或 None
     """
     if not path:
+        print(f"      [find_intersection_with_middle_line] 路径为空")
         return None
     
     closest_pos = None
@@ -518,6 +529,11 @@ def find_intersection_with_middle_line(path):
         if dist_to_middle < min_dist_to_middle:
             min_dist_to_middle = dist_to_middle
             closest_pos = pos
+    
+    if closest_pos:
+        print(f"      [find_intersection_with_middle_line] 路径长度: {len(path)}, 中轴交点: {closest_pos}, 距离中轴: {min_dist_to_middle}")
+    else:
+        print(f"      [find_intersection_with_middle_line] 路径长度: {len(path)}, 未找到交点")
     
     return closest_pos
 
@@ -540,6 +556,7 @@ def defence(player, opponent):
     """
     防守函数：在自己半场内尽可能撞击敌人，让敌人进入prison
     根据路径长度和对方状态进行智能拦截
+    基于初始路径进行过滤，避免路径跳变
     
     Args:
         player: 玩家对象
@@ -551,58 +568,148 @@ def defence(player, opponent):
     opponent_pos = (opponent["posX"], opponent["posY"])
     
     # 计算初始路径：直接以敌人为目标
-    path = defence_route(player_pos, opponent_pos)
+    initial_path = defence_route(player_pos, opponent_pos)
+    
+    print(f"🛡️  [defence] {player.get('name', 'unknown')} -> {opponent.get('name', 'unknown')}")
+    print(f"   玩家位置: {player_pos}, 敌人位置: {opponent_pos}")
+    print(f"   初始路径长度: {len(initial_path) if initial_path else 0}")
+    
+    if not initial_path or len(initial_path) < 2:
+        print(f"   ⚠️  初始路径无效，返回空方向")
+        return ""
     
     # 如果路径长度 >= 3，进行预测和拦截
-    if len(path) >= 3:
+    if len(initial_path) >= 3:
+        target_pos = None
+        
         # 如果对方有旗帜
         if opponent.get("hasFlag", False):
+            print(f"   🚩 对方有旗帜")
             # 计算对方回到营地的路径
+            # 注意：这里应该使用 world.route_to 而不是 improved_route
+            # 因为这是对方的路径，不需要避开己方的敌人势力范围
             opponent_targets = list(world.list_targets(mine=False))
             if opponent_targets:
                 opponent_target = opponent_targets[0]
-                opponent_path = improved_route(opponent_pos, opponent_target)
+                opponent_path = world.route_to(opponent_pos, opponent_target)
+                
+                print(f"   对方目标: {opponent_target}, 对方路径长度: {len(opponent_path) if opponent_path else 0}")
                 
                 if opponent_path:
-                    # 在对方路径上找到距离自己最短的我方半场位置作为追击目标
-                    chase_target = find_closest_my_territory_on_path(opponent_path, player_pos)
+                    # 在初始路径中找到在对方路径上且在我方半场的位置
+                    # 遍历初始路径，找到既在对方路径上又在我方半场的位置
+                    opponent_path_set = set(opponent_path)
+                    for pos in initial_path:
+                        if pos in opponent_path_set and is_in_my_territory(pos):
+                            target_pos = pos
+                            print(f"   ✅ 找到目标点（在对方路径上且在我方半场）: {target_pos}")
+                            break
                     
-                    if chase_target:
-                        # 重新计算路径：以拦截点为目标
-                        path = defence_route(player_pos, chase_target)
+                    # 如果没找到，则在初始路径中找到距离自己最短的我方半场位置
+                    if not target_pos:
+                        target_pos = find_closest_my_territory_on_path(initial_path, player_pos)
+                        if target_pos:
+                            print(f"   ✅ 找到目标点（初始路径中最近的我方半场位置）: {target_pos}")
+                        else:
+                            print(f"   ⚠️  未找到目标点（初始路径中无我方半场位置）")
         
         else:
-            # 对方无旗帜，计算对方去每个己方旗子的路径
-            my_flags = world.list_flags(mine=True, canPickup=None)
-            best_intersection = None
-            min_dist_to_opponent = float('inf')
+            # 对方无旗帜
+            opponent_in_my_territory = is_in_my_territory(opponent_pos)
+            print(f"   🚩 对方无旗帜, 对方在我方半场: {opponent_in_my_territory}")
             
-            for flag in my_flags:
-                flag_pos = (flag["posX"], flag["posY"])
-                # 计算对方去旗子的路径
-                flag_path = improved_route(opponent_pos, flag_pos)
+            if opponent_in_my_territory:
+                # 对手在己方半场，直接使用初始路径（不需要修改）
+                target_pos = None
+                print(f"   ✅ 对手在己方半场，不使用目标点")
+            else:
+                # 对手不在己方半场，计算对方去每个己方旗子的路径，找到中轴交点
+                my_flags = world.list_flags(mine=True, canPickup=None)
+                best_intersection = None
+                min_dist_to_opponent = float('inf')
                 
-                if flag_path:
-                    # 找到路径上与中轴的交点
-                    intersection = find_intersection_with_middle_line(flag_path)
+                print(f"   检查 {len(my_flags)} 个己方旗子")
+                for flag in my_flags:
+                    flag_pos = (flag["posX"], flag["posY"])
+                    # 计算对方去旗子的路径
+                    # 注意：这里应该使用 world.route_to 而不是 improved_route
+                    # 因为这是对方的路径，我们要预测对方的真实路径，而不是避开对方势力范围的路径
+                    flag_path = world.route_to(opponent_pos, flag_pos)
                     
-                    if intersection:
-                        # 计算交点到对方的距离（距离对方最近的交点）
-                        dist = abs(intersection[0] - opponent_pos[0]) + abs(intersection[1] - opponent_pos[1])
-                        if dist < min_dist_to_opponent:
-                            min_dist_to_opponent = dist
-                            best_intersection = intersection
+                    if flag_path:
+                        # 找到路径上与中轴的交点
+                        intersection = find_intersection_with_middle_line(flag_path)
+                        
+                        if intersection:
+                            # 检查交点是否在初始路径上
+                            if intersection in initial_path:
+                                # 计算交点到对方的距离（距离对方最近的交点）
+                                dist = abs(intersection[0] - opponent_pos[0]) + abs(intersection[1] - opponent_pos[1])
+                                print(f"     旗子 {flag_pos}: 交点 {intersection} 在初始路径上, 距离: {dist}")
+                                if dist < min_dist_to_opponent:
+                                    min_dist_to_opponent = dist
+                                    best_intersection = intersection
+                            else:
+                                print(f"     旗子 {flag_pos}: 交点 {intersection} 不在初始路径上")
+                
+                # 如果找到最佳交点且在初始路径上，使用该交点
+                if best_intersection:
+                    target_pos = best_intersection
+                    print(f"   ✅ 找到目标点（中轴交点）: {target_pos}, 距离: {min_dist_to_opponent}")
+                else:
+                    # 如果没找到交点，不动路径（使用完整初始路径）
+                    target_pos = None
+                    print(f"   ✅ 未找到交点，使用完整初始路径")
+        
+        # 打印目标点信息
+        if target_pos:
+            print(f"   🎯 最终目标点: {target_pos}, 是否在初始路径: {target_pos in initial_path}")
+            print(f"   目标点是否在我方半场: {is_in_my_territory(target_pos)}")
+        else:
+            print(f"   🎯 最终目标点: None（使用完整初始路径）")
+        
+        # 过滤初始路径，去除敌方半场的部分
+        # 遍历初始路径，只保留到我方半场目标位置的部分（去除敌方半场的部分）
+        filtered_path = []
+        
+        # 如果目标点在敌方半场，不使用目标点，只保留到我方半场的部分
+        if target_pos and not is_in_my_territory(target_pos):
+            print(f"   ⚠️  目标点在敌方半场，不使用目标点，只保留到我方半场的部分")
+            target_pos = None
+        
+        for pos in initial_path:
+            # 如果找到了目标位置且目标点在我方半场，包含目标位置后停止
+            if target_pos and pos == target_pos:
+                filtered_path.append(pos)
+                print(f"   ✅ 找到目标点，停止过滤")
+                break
             
-            # 如果找到最佳交点，重新计算路径：以中轴交点为目标
-            if best_intersection:
-                path = defence_route(player_pos, best_intersection)
+            # 只保留我方半场的部分
+            if is_in_my_territory(pos):
+                filtered_path.append(pos)
+            else:
+                # 遇到敌方半场，停止（去除敌方半场部分）
+                # 如果还没找到目标位置，也停止
+                print(f"   ⚠️  遇到敌方半场位置 {pos}，停止过滤")
+                break
+        
+        print(f"   过滤后路径长度: {len(filtered_path)}, 初始路径长度: {len(initial_path)}")
+        
+        # 如果过滤后的路径为空，使用初始路径
+        path = filtered_path if filtered_path else initial_path
+    else:
+        # 路径长度 < 3，直接使用初始路径
+        print(f"   路径长度 < 3，直接使用初始路径")
+        path = initial_path
     
-    # 如果路径长度 < 3，直接使用初始路径（以敌人为目标）
     # 如果路径存在且长度>1，返回第一步的方向
     if len(path) > 1:
         next_step = path[1]
-        return GameMap.get_direction(player_pos, next_step)
+        direction = GameMap.get_direction(player_pos, next_step)
+        print(f"   ➡️  下一步: {next_step} -> {direction}")
+        return direction
     
+    print(f"   ⚠️  路径无效，返回空方向")
     return ""
 
 
@@ -610,9 +717,10 @@ def scoring(player, target_flag):
     """
     得分函数：处理拿旗和送旗逻辑
     逻辑：
-    - 没有旗时优先采用defence逻辑
-    - 有旗时优先回到己方半场
-    - 回到己方半场后优先防御（不前往敌方半场），后回到基地
+    - 如果有旗子：
+      - 在敌方领地：使用improved_route，以离自己路线最近的己方半场格子作为目标
+      - 在己方半场：如果距离最近敌人路程<=3，进行defence；否则使用improved_route，以己方营地作为目标
+    - 如果没有旗子：使用improved_route，以敌方旗子为目标
     Args:
         player: 玩家对象
         target_flag: 目标旗子对象（当玩家无旗子时使用）
@@ -621,81 +729,170 @@ def scoring(player, target_flag):
     """
     player_pos = (player["posX"], player["posY"])
     
+    print(f"⚽ [scoring] {player.get('name', 'unknown')}")
+    print(f"   玩家位置: {player_pos}, 有旗: {player.get('hasFlag', False)}")
+    
     # 如果玩家有旗子
     if player.get("hasFlag", False):
         my_targets = list(world.list_targets(mine=True))
         if not my_targets:
+            print(f"   ⚠️  无己方目标，返回空方向")
             return ""
         
         my_target = my_targets[0]
+        print(f"   己方目标: {my_target}")
         
         # 判断是否在敌方领地
         if is_in_enemy_territory(player, player_pos):
-            # 在敌方领地：优先回到己方半场
+            print(f"   🏃 在敌方领地")
+            # 在敌方领地：使用improved_route，以离自己路线最近的己方半场格子作为目标
             route_to_target = improved_route(player_pos, my_target)
+            
+            print(f"   到目标的路径长度: {len(route_to_target) if route_to_target else 0}")
             
             if route_to_target:
                 # 在路径上找到离自己路线最近的己方半场格子作为目标
                 target = find_closest_my_territory_on_route(route_to_target, player_pos)
                 
+                print(f"   🎯 找到的己方半场目标点: {target}")
+                
                 if target:
                     path = improved_route(player_pos, target)
+                    print(f"   到目标点的路径长度: {len(path) if path else 0}")
                 else:
                     # 如果找不到，直接使用营地
+                    print(f"   ⚠️  未找到己方半场目标点，使用营地")
                     path = improved_route(player_pos, my_target)
             else:
+                print(f"   ⚠️  到目标的路径无效，使用营地")
                 path = improved_route(player_pos, my_target)
         else:
-            # 在己方半场：优先防御（不前往敌方半场），后回到基地
+            # 在己方半场
+            print(f"   🏠 在己方半场")
             opponents = world.list_players(mine=False, inPrison=False, hasFlag=None)
             
-            # 优先检查是否有敌人需要防御
+            # 检查距离最近敌人的路程
             if opponents:
-                # 检查是否有敌人在己方半场或距离很近
+                closest_opponent = None
+                min_path_length = float('inf')
+                
                 for opponent in opponents:
                     opponent_pos = (opponent["posX"], opponent["posY"])
-                    dist = abs(player_pos[0] - opponent_pos[0]) + abs(player_pos[1] - opponent_pos[1])
-                    
-                    # 如果敌人在己方半场或距离很近（<=5），优先防御
-                    is_opponent_in_my_territory = not is_in_enemy_territory(player, opponent_pos)
-                    if is_opponent_in_my_territory or dist <= 5:
-                        defence_direction = defence(player, opponent)
-                        if defence_direction:
-                            return defence_direction
+                    # 使用defence_route计算实际路径长度
+                    path_to_opponent = defence_route(player_pos, opponent_pos)
+                    if path_to_opponent and len(path_to_opponent) > 0:
+                        path_length = len(path_to_opponent)
+                        if path_length < min_path_length:
+                            min_path_length = path_length
+                            closest_opponent = opponent
+                
+                print(f"   最近敌人: {closest_opponent.get('name', 'unknown') if closest_opponent else None}, 路径长度: {min_path_length}")
+                
+                # 如果距离最近敌人路程<=3，进行defence
+                if closest_opponent and min_path_length <= 3:
+                    print(f"   🛡️  敌人距离<=3，执行defence")
+                    defence_direction = defence(player, closest_opponent)
+                    if defence_direction:
+                        return defence_direction
             
-            # 如果没有需要防御的敌人，返回基地
+            # 否则，使用improved_route，以己方营地作为目标
+            print(f"   🎯 使用己方营地作为目标")
             path = improved_route(player_pos, my_target)
+            print(f"   到营地的路径长度: {len(path) if path else 0}")
         
         # 返回方向
         if len(path) > 1:
             next_step = path[1]
-            return GameMap.get_direction(player_pos, next_step)
+            direction = GameMap.get_direction(player_pos, next_step)
+            print(f"   ➡️  下一步: {next_step} -> {direction}")
+            return direction
+        else:
+            print(f"   ⚠️  路径无效，返回空方向")
     
     else:
-        # 玩家无旗子：优先采用defence逻辑
-        opponents = world.list_players(mine=False, inPrison=False, hasFlag=None)
+        # 玩家无旗子：使用improved_route，以敌方旗子为目标
+        print(f"   🚩 无旗，去拿敌方旗子")
         
-        if opponents:
-            # 优先检查是否有敌人需要防御
-            for opponent in opponents:
-                opponent_pos = (opponent["posX"], opponent["posY"])
-                dist = abs(player_pos[0] - opponent_pos[0]) + abs(player_pos[1] - opponent_pos[1])
-                
-                # 如果敌人在己方半场或距离很近（<=5），优先防御
-                is_opponent_in_my_territory = not is_in_enemy_territory(player, opponent_pos)
-                if is_opponent_in_my_territory or dist <= 5:
-                    defence_direction = defence(player, opponent)
-                    if defence_direction:
-                        return defence_direction
+        # 获取所有可用的敌方旗子
+        enemy_flags = world.list_flags(mine=False, canPickup=True)
         
-        # 如果没有需要防御的敌人，才去拿旗
-        if target_flag:
-            flag_pos = (target_flag["posX"], target_flag["posY"])
-            path = improved_route(player_pos, flag_pos)
+        if not enemy_flags:
+            print(f"   ⚠️  无可用敌方旗子，返回空方向")
+            return ""
+        
+        # 如果提供了目标旗子，先尝试它
+        selected_flag = target_flag
+        best_flag = None
+        best_path = None
+        min_path_length = float('inf')
+        
+        # 如果提供了目标旗子，先尝试它
+        if selected_flag and selected_flag in enemy_flags:
+            flag_pos = (selected_flag["posX"], selected_flag["posY"])
+            print(f"   尝试目标旗子位置: {flag_pos}")
             
-            if len(path) > 1:
-                next_step = path[1]
-                return GameMap.get_direction(player_pos, next_step)
+            # 先尝试使用 improved_route（避开敌人势力范围）
+            path = improved_route(player_pos, flag_pos)
+            print(f"   improved_route 路径长度: {len(path) if path else 0}")
+            
+            # 如果 improved_route 失败，尝试 world.route_to
+            if not path or len(path) <= 1:
+                print(f"   ⚠️  improved_route 失败，尝试 world.route_to")
+                path = world.route_to(player_pos, flag_pos)
+                print(f"   world.route_to 路径长度: {len(path) if path else 0}")
+            
+            # 如果路径有效，记录为最佳选择
+            if path and len(path) > 1:
+                best_flag = selected_flag
+                best_path = path
+                min_path_length = len(path)
+                print(f"   ✅ 目标旗子路径有效，路径长度: {min_path_length}")
+            else:
+                print(f"   ⚠️  目标旗子路径无效，尝试其他旗子")
+        
+        # 如果目标旗子失败或未提供，尝试所有其他旗子，选择路径最短的
+        if not best_path:
+            print(f"   尝试其他 {len(enemy_flags)} 个敌方旗子")
+            for flag in enemy_flags:
+                # 如果已经尝试过这个旗子，跳过
+                if selected_flag and flag == selected_flag:
+                    continue
+                
+                flag_pos = (flag["posX"], flag["posY"])
+                
+                # 先尝试使用 improved_route
+                path = improved_route(player_pos, flag_pos)
+                
+                # 如果 improved_route 失败，尝试 world.route_to
+                if not path or len(path) <= 1:
+                    path = world.route_to(player_pos, flag_pos)
+                
+                # 如果路径有效，且比当前最佳路径更短，更新最佳选择
+                if path and len(path) > 1:
+                    path_length = len(path)
+                    if path_length < min_path_length:
+                        min_path_length = path_length
+                        best_flag = flag
+                        best_path = path
+                        print(f"   ✅ 找到更好的旗子: {flag_pos}, 路径长度: {path_length}")
+        
+        # 使用最佳旗子
+        if best_path and len(best_path) > 1:
+            next_step = best_path[1]
+            direction = GameMap.get_direction(player_pos, next_step)
+            best_flag_pos = (best_flag["posX"], best_flag["posY"])
+            print(f"   ➡️  选择旗子: {best_flag_pos}, 下一步: {next_step} -> {direction}")
+            return direction
+        else:
+            print(f"   ⚠️  所有旗子都无法到达，返回空方向")
+            # 添加更详细的调试信息
+            print(f"   起点是否在障碍物: {player_pos in world.walls}")
+            opponents = world.list_players(mine=False, inPrison=False, hasFlag=None)
+            print(f"   敌人数量: {len(opponents)}")
+            for opp in opponents:
+                opp_pos = (opp["posX"], opp["posY"])
+                dist = abs(player_pos[0] - opp_pos[0]) + abs(player_pos[1] - opp_pos[1])
+                print(f"     敌人 {opp.get('name', 'unknown')} 位置: {opp_pos}, 距离: {dist}")
     
     return ""
 
@@ -753,8 +950,8 @@ player_to_rescue_assignments = {}
 # RL相关全局变量
 rl_agent = None
 prev_game_state = {}  # 存储上一帧状态用于奖励计算
-USE_RL = True  # 是否使用RL（在此处配置：True=使用RL，False=使用规则策略）
-RL_MODEL_PATH = "./models/dqn_model_latest.pth"  # 模型路径（如果为None则不加载模型，否则加载指定路径的模型）
+USE_RL = False  # 是否使用RL（在此处配置：True=使用RL，False=使用规则策略）
+RL_MODEL_PATH = "./lib/models/dqn_model_latest.pth"  # 模型路径（如果为None则不加载模型，否则加载指定路径的模型）
 player_defence_targets = {}  # 跟踪每个玩家当前正在追击的目标敌人 {player_name: enemy_name}
 player_flag_targets = {}  # 跟踪每个玩家当前正在追击的目标旗子 {player_name: (flag_posX, flag_posY)}
 
@@ -901,6 +1098,14 @@ def plan_next_actions(req):
                 if player.get("inPrison", False):
                     continue
                 
+                # 只要有旗就强制覆盖RL决策为scoring
+                player_pos = (player["posX"], player["posY"])
+                if player.get("hasFlag", False):
+                    # 覆盖RL决策，强制使用scoring
+                    action_type = "scoring"
+                    target = None  # 不需要target，scoring函数会处理
+                    print(f"  🔄 {player_name}: 有旗，覆盖RL决策为scoring")
+                
                 direction = ""
                 
                 try:
@@ -1013,39 +1218,18 @@ def plan_next_actions(req):
                     direction = ""
                 
                 # 如果获得了有效方向，添加到actions
-                #if direction and direction in ["up", "down", "left", "right"]:
-                #    actions[player_name] = direction
-                #    processed_players.add(player_name)
-                #    # 打印执行的动作
-                #    print(f"  ✅ {player_name}: {action_type} -> {direction}")
-                #else:
-                # 打印未获得有效方向的情况
-                print(f"  ⚠️  {player_name}: {action_type} -> 无有效方向")
+                if direction and direction in ["up", "down", "left", "right"]:
+                    actions[player_name] = direction
+                    processed_players.add(player_name)
+                    # 打印执行的动作
+                    print(f"  ✅ {player_name}: {action_type} -> {direction}")
+                else:
+                    # 打印未获得有效方向的情况
+                    print(f"  ⚠️  {player_name}: {action_type} -> 无有效方向")
             
             # 处理未在schedule中的玩家（在prison中的玩家已经在predict_schedule中过滤）
             # 但为了完整性，检查是否有遗漏的玩家
-            for player in my_players_all:
-                player_name = player["name"]
-                if player_name not in processed_players and not player.get("inPrison", False):
-                    # 如果玩家没有被分配动作，使用默认策略（找最近的flag）
-                    if player_name not in actions:
-                        if enemy_flags:
-                            player_pos = (player["posX"], player["posY"])
-                            min_dist = float('inf')
-                            closest_flag = None
-                            for flag in enemy_flags:
-                                flag_pos = (flag["posX"], flag["posY"])
-                                dist = abs(player_pos[0] - flag_pos[0]) + abs(player_pos[1] - flag_pos[1])
-                                if dist < min_dist:
-                                    min_dist = dist
-                                    closest_flag = flag
-                            if closest_flag:
-                                try:
-                                    direction = scoring(player, closest_flag)
-                                    if direction:
-                                        actions[player_name] = direction
-                                except:
-                                    pass
+
         
         except Exception as e:
             # RL决策出错，回退到规则策略

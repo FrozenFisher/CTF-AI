@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-import RL
+from lib import RL
 import numpy as np
 
 # 创建一个模拟的world对象
