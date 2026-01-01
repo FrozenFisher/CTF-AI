@@ -73,6 +73,13 @@ python3 server.py 34713
     { "name": "L", "who": "user48-1"},
     { "name": "R", "who": "user48-2"}
   ],
+  "setup": {
+    "numPlayers": 9,
+    "numFlags": 20,
+    "useRandomFlags": true,
+    "mapWidth": 20,
+    "mapHeight": 20
+  },
   "servers": {
     "user48-1": "ws://0.0.0.0:34712",
     "user48-2": "ws://0.0.0.0:34713"
@@ -81,8 +88,11 @@ python3 server.py 34713
 ```
 
 - `teams` 字段指定每个队伍对应的服务器ID
+- `setup` 字段配置游戏设置，重启服务器后生效（注：有关地图长宽的暂时不可用）
 - `servers` 字段配置每个服务器ID对应的 WebSocket URL
 - 确保后端端口与配置中的端口一致
+
+- 
 
 ## 开发教程
 
