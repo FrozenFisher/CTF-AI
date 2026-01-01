@@ -26,8 +26,78 @@ There are obstacles and walls within the map.
 ## 快速开始
 
 ### 环境要求
-- Python 3.7+
-- 推荐使用虚拟环境（项目已包含 `.venv`）
+- Python 3.13
+- 推荐使用虚拟环境（venv）
+
+### 环境配置指南
+
+#### 1. 创建虚拟环境
+
+在项目根目录（`CTF/`）下创建虚拟环境：
+
+```bash
+cd saved/CTF
+python3 -m venv .venv
+```
+
+或者使用其他名称：
+
+```bash
+python3 -m venv venv
+```
+
+#### 2. 激活虚拟环境
+
+**macOS/Linux:**
+```bash
+source .venv/bin/activate
+```
+
+**Windows:**
+```bash
+.venv\Scripts\activate
+```
+
+激活成功后，命令行提示符前会显示 `(.venv)` 标识。
+
+#### 3. 安装依赖
+
+激活虚拟环境后，安装项目依赖：
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+如果需要安装训练相关的依赖（PyTorch 等），可以运行：
+
+```bash
+./install_dependencies.sh
+```
+
+#### 4. 验证安装
+
+验证关键依赖是否安装成功：
+
+```bash
+python3 -c "import torch; print(f'✓ PyTorch {torch.__version__}')"
+python3 -c "import numpy; print(f'✓ NumPy {numpy.__version__}')"
+python3 -c "import matplotlib; print(f'✓ Matplotlib {matplotlib.__version__}')"
+```
+
+#### 5. 退出虚拟环境
+
+使用完毕后，可以退出虚拟环境：
+
+```bash
+deactivate
+```
+
+#### 注意事项
+
+- 每次使用项目前，记得先激活虚拟环境
+- 如果使用 IDE（如 VS Code、PyCharm），可以配置使用项目中的虚拟环境
+- 虚拟环境目录（`.venv/`）已添加到 `.gitignore`，不会被提交到版本控制
 
 ### 启动游戏
 
